@@ -1,6 +1,9 @@
 import os
 from cs336_basics.pretokenization_example import find_chunk_boundaries
+import regex as re
 
+
+PRE_TPKEN_PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 def my_run_train_bpe(
     input_path: str | os.PathLike,
@@ -36,17 +39,53 @@ def my_run_train_bpe(
     
     cur_token_id = 256
     
+    for special in special_tokens:
+        vocab[cur_token_id] = special.encode("utf-8")
+        cur_token_id += 1
+    
+    
     merges: list[tuple[bytes, bytes]] = []
+    
+    pair_count_map: dict[tuple[bytes, bytes], int] = {}
+    
+    pre_token_map: dict[tuple[bytes, ...], int] = {}
 
+    # initial pair count for pre-tokens
     with open(input_path, "rb") as f:
         num_processes = 8
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
-        # The following is a serial implementation, but you can parallelize this
-        # by sending each start/end pair to a set of processes.
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             f.seek(start)
             chunk = f.read(end - start).decode("utf-8", errors="ignore")
-            
+            for pre in re.finditer(PRE_TPKEN_PAT, chunk):
+                pre_bytes = pre.group(0).encode("utf-8")
+                pre_tuple: tuple[bytes, ...] = tuple(bytes([b]) for b in pre_bytes)
+                pre_token_map[pre_tuple] = pre_token_map.get(pre_tuple, 0) + 1
+
+    while len(vocab) < vocab_size:
+        pair_count_map.clear()
+        for pre_token_bytes, count in pre_token_map.items():
+            pre_token_str = b"".join(pre_token_bytes).decode("utf-8")
+            if pre_token_str in special_tokens:
+                continue
+            for a, b in zip(pre_token_bytes, pre_token_bytes[1:]):
+                key = (a, b)
+                pair_count_map[key] = pair_count_map.get(key, 0) + count
+        max_count = 0
+        max_pairs = []
+        for pair, count in pair_count_map.items():
+            if count > max_count:
+                max_count = count
+                max_pairs.clear()
+                max_pairs.append(pair)
+            elif count == max_count:
+                max_pairs.append(pair)
+        max_max_pair = max(max_pairs)
+        merges.append(max_max_pair)
+        for pre_token_bytes, count in list(pre_token_map.items()):
+            for a, b in zip(pre_token_bytes, pre_token_bytes[1:]):
+                if a == max_max_pair[0] and b == max_max_pair[1]:
+                    
 
     raise NotImplementedError
