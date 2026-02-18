@@ -3,7 +3,10 @@ from cs336_basics.pretokenization_example import find_chunk_boundaries
 import regex as re
 
 
-PRE_TPKEN_PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+PRE_TPKEN_PAT = (
+    r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+)
+
 
 def my_run_train_bpe(
     input_path: str | os.PathLike,
@@ -32,22 +35,19 @@ def my_run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    
-  
-    
+
     vocab: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
-    
+
     cur_token_id = 256
-    
+
     for special in special_tokens:
         vocab[cur_token_id] = special.encode("utf-8")
         cur_token_id += 1
-    
-    
+
     merges: list[tuple[bytes, bytes]] = []
-    
+
     pair_count_map: dict[tuple[bytes, bytes], int] = {}
-    
+
     pre_token_map: dict[tuple[bytes, ...], int] = {}
 
     # initial pair count for pre-tokens
@@ -83,9 +83,35 @@ def my_run_train_bpe(
                 max_pairs.append(pair)
         max_max_pair = max(max_pairs)
         merges.append(max_max_pair)
-        for pre_token_bytes, count in list(pre_token_map.items()):
-            for a, b in zip(pre_token_bytes, pre_token_bytes[1:]):
-                if a == max_max_pair[0] and b == max_max_pair[1]:
-                    
+        left, right = max_max_pair
+        merged_token = left + right
 
-    raise NotImplementedError
+        # add to vocab
+        vocab[cur_token_id] = merged_token
+        cur_token_id += 1
+
+        new_pre_token_map: dict[tuple[bytes, ...], int] = {}
+        special_token_bytes = {s.encode("utf-8") for s in special_tokens}
+
+        for pre_token_bytes, count in pre_token_map.items():
+            # never merge inside special tokens
+            if b"".join(pre_token_bytes) in special_token_bytes:
+                new_pre_token_map[pre_token_bytes] = (
+                    new_pre_token_map.get(pre_token_bytes, 0) + count
+                )
+                continue
+            out: list[bytes] = []
+            i = 0
+            while i < len(pre_token_bytes):
+                if i + 1 < len(pre_token_bytes) and pre_token_bytes[i] == left and pre_token_bytes[i + 1] == right:
+                    out.append(merged_token)
+                    i += 2
+                else:
+                    out.append(pre_token_bytes[i])
+                    i += 1
+            out_t = tuple(out)
+            new_pre_token_map[out_t] = new_pre_token_map.get(out_t, 0) + count
+        pre_token_map = new_pre_token_map
+
+
+    return (vocab, merges)
