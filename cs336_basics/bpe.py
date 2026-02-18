@@ -12,7 +12,7 @@ def my_run_train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
-    **kwargs,
+    kwargs: dict | None = None,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """Given the path to an input corpus, run train a BPE tokenizer and
     output its vocabulary and merges.
@@ -35,6 +35,7 @@ def my_run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
+    _ = kwargs
 
     vocab: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
 
