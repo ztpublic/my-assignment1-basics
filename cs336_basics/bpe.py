@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ProcessPoolExecutor
 from cs336_basics.pretokenization_example import find_chunk_boundaries
 import regex as re
 
@@ -6,6 +7,24 @@ import regex as re
 PRE_TPKEN_PAT = (
     r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 )
+PRE_TOKEN_RE = re.compile(PRE_TPKEN_PAT)
+SINGLE_BYTE_TOKENS = tuple(bytes([i]) for i in range(256))
+
+
+def _count_chunk_pretokens(
+    chunk_spec: tuple[str, int, int],
+) -> dict[bytes, int]:
+    input_path, start, end = chunk_spec
+    counts: dict[bytes, int] = {}
+    with open(input_path, "rb") as f:
+        f.seek(start)
+        chunk = f.read(end - start).decode("utf-8", errors="ignore")
+
+    for pre in PRE_TOKEN_RE.finditer(chunk):
+        pre_bytes = pre.group(0).encode("utf-8")
+        counts[pre_bytes] = counts.get(pre_bytes, 0) + 1
+
+    return counts
 
 
 def my_run_train_bpe(
@@ -35,9 +54,9 @@ def my_run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    _ = kwargs
+    kwargs = kwargs or {}
 
-    vocab: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
+    vocab: dict[int, bytes] = {i: SINGLE_BYTE_TOKENS[i] for i in range(256)}
 
     cur_token_id = 256
 
@@ -52,17 +71,29 @@ def my_run_train_bpe(
     pre_token_map: dict[tuple[bytes, ...], int] = {}
 
     # initial pair count for pre-tokens
-    with open(input_path, "rb") as f:
-        num_processes = 8
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+    num_processes = max(1, int(kwargs.get("num_processes", min(8, os.cpu_count() or 1))))
+    input_path_str = os.fspath(input_path)
 
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
-            f.seek(start)
-            chunk = f.read(end - start).decode("utf-8", errors="ignore")
-            for pre in re.finditer(PRE_TPKEN_PAT, chunk):
-                pre_bytes = pre.group(0).encode("utf-8")
-                pre_tuple: tuple[bytes, ...] = tuple(bytes([b]) for b in pre_bytes)
-                pre_token_map[pre_tuple] = pre_token_map.get(pre_tuple, 0) + 1
+    with open(input_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+    chunk_specs = [
+        (input_path_str, start, end)
+        for start, end in zip(boundaries[:-1], boundaries[1:])
+        if end > start
+    ]
+
+    pre_token_bytes_counts: dict[bytes, int] = {}
+    # Always process chunks via multiprocessing.
+    with ProcessPoolExecutor(max_workers=num_processes) as executor:
+        for chunk_counts in executor.map(_count_chunk_pretokens, chunk_specs):
+            for pre_bytes, count in chunk_counts.items():
+                pre_token_bytes_counts[pre_bytes] = (
+                    pre_token_bytes_counts.get(pre_bytes, 0) + count
+                )
+
+    for pre_bytes, count in pre_token_bytes_counts.items():
+        pre_tuple = tuple(SINGLE_BYTE_TOKENS[b] for b in pre_bytes)
+        pre_token_map[pre_tuple] = count
 
     while len(vocab) < vocab_size:
         pair_count_map.clear()
