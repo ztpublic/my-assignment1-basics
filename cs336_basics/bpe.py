@@ -1,5 +1,6 @@
 import os
 import heapq
+from functools import lru_cache
 from concurrent.futures import ProcessPoolExecutor
 from cs336_basics.pretokenization_example import find_chunk_boundaries
 import regex as re
@@ -23,19 +24,53 @@ class _ReversePairOrder:
 
 
 def _count_chunk_pretokens(
-    chunk_spec: tuple[str, int, int],
+    chunk_spec: tuple[str, int, int, tuple[str, ...]],
 ) -> dict[bytes, int]:
-    input_path, start, end = chunk_spec
+    input_path, start, end, special_tokens = chunk_spec
     counts: dict[bytes, int] = {}
     with open(input_path, "rb") as f:
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
 
-    for pre in PRE_TOKEN_RE.finditer(chunk):
-        pre_bytes = pre.group(0).encode("utf-8")
-        counts[pre_bytes] = counts.get(pre_bytes, 0) + 1
+    if not special_tokens:
+        for pre in PRE_TOKEN_RE.finditer(chunk):
+            pre_bytes = pre.group(0).encode("utf-8")
+            counts[pre_bytes] = counts.get(pre_bytes, 0) + 1
+        return counts
+
+    special_tokens_set = set(special_tokens)
+    special_token_re = _get_special_token_re(special_tokens)
+    last_index = 0
+
+    # Split around special tokens, then pre-tokenize only non-special spans.
+    for match in special_token_re.finditer(chunk):
+        start_index, end_index = match.span()
+        if start_index > last_index:
+            for pre in PRE_TOKEN_RE.finditer(chunk[last_index:start_index]):
+                pre_bytes = pre.group(0).encode("utf-8")
+                counts[pre_bytes] = counts.get(pre_bytes, 0) + 1
+
+        special = match.group(0)
+        if special in special_tokens_set:
+            special_bytes = special.encode("utf-8")
+            counts[special_bytes] = counts.get(special_bytes, 0) + 1
+
+        last_index = end_index
+
+    if last_index < len(chunk):
+        for pre in PRE_TOKEN_RE.finditer(chunk[last_index:]):
+            pre_bytes = pre.group(0).encode("utf-8")
+            counts[pre_bytes] = counts.get(pre_bytes, 0) + 1
 
     return counts
+
+
+@lru_cache(maxsize=32)
+def _get_special_token_re(special_tokens: tuple[str, ...]) -> re.Pattern:
+    escaped_specials = "|".join(
+        re.escape(token) for token in sorted(special_tokens, key=len, reverse=True)
+    )
+    return re.compile(f"(?:{escaped_specials})")
 
 
 def _pair_occurrences(
@@ -137,8 +172,9 @@ def my_run_train_bpe(
 
     with open(input_path, "rb") as f:
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+    special_tokens_tuple = tuple(special_tokens)
     chunk_specs = [
-        (input_path_str, start, end)
+        (input_path_str, start, end, special_tokens_tuple)
         for start, end in zip(boundaries[:-1], boundaries[1:])
         if end > start
     ]
