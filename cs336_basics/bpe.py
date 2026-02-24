@@ -39,7 +39,7 @@ def _count_chunk_pretokens(
         return counts
 
     special_tokens_set = set(special_tokens)
-    special_token_re = _get_special_token_re(special_tokens)
+    special_token_re = get_special_token_re(special_tokens)
     last_index = 0
 
     # Split around special tokens, then pre-tokenize only non-special spans.
@@ -66,7 +66,7 @@ def _count_chunk_pretokens(
 
 
 @lru_cache(maxsize=32)
-def _get_special_token_re(special_tokens: tuple[str, ...]) -> re.Pattern:
+def get_special_token_re(special_tokens: tuple[str, ...]) -> re.Pattern:
     escaped_specials = "|".join(
         re.escape(token) for token in sorted(special_tokens, key=len, reverse=True)
     )
