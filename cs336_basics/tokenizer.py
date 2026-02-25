@@ -69,7 +69,7 @@ class Tokenizer:
     def decode(self, ids: list[int]) -> str:
         byte_list = [self.vocab[token_id] for token_id in ids]
         joined = b"".join(byte_list)
-        return joined.decode("utf-8")
+        return joined.decode("utf-8", errors="replace")
 
     def _pre_token_iter(self, iterable: Iterable[str]) -> Iterator[bytes]:
         if not self.special_tokens:
@@ -78,7 +78,7 @@ class Tokenizer:
                    pre_bytes = pre.group(0).encode("utf-8")
                    yield pre_bytes
             return
-        special_token_re = get_special_token_re(tuple(self.special_tokens))
+        special_token_re = get_special_token_re(tuple(s.decode("utf-8") for s in self.special_tokens))
         for chunk in iterable:
             last_index = 0
             for match in special_token_re.finditer(chunk):
