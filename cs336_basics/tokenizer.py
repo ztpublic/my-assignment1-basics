@@ -67,7 +67,9 @@ class Tokenizer:
             yield from self._encode_pre_token(pre_bytes)
 
     def decode(self, ids: list[int]) -> str:
-        return ""
+        byte_list = [self.vocab[token_id] for token_id in ids]
+        joined = b"".join(byte_list)
+        return joined.decode("utf-8")
 
     def _pre_token_iter(self, iterable: Iterable[str]) -> Iterator[bytes]:
         if not self.special_tokens:
