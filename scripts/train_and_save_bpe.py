@@ -6,19 +6,7 @@ import os
 from pathlib import Path
 
 from cs336_basics.bpe import my_run_train_bpe
-
-
-def gpt2_bytes_to_unicode() -> dict[int, str]:
-    """Map each byte (0..255) to a printable GPT-2 unicode surrogate."""
-    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
-    cs = bs[:]
-    n = 0
-    for b in range(2**8):
-        if b not in bs:
-            bs.append(b)
-            cs.append(2**8 + n)
-            n += 1
-    return dict(zip(bs, [chr(x) for x in cs]))
+from cs336_basics.gpt2_utils import bytes_to_gpt2_text
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,22 +41,17 @@ def main() -> None:
         kwargs={"num_processes": args.num_processes},
     )
 
-    byte_to_unicode = gpt2_bytes_to_unicode()
-
-    def token_bytes_to_str(token_bytes: bytes) -> str:
-        return "".join(byte_to_unicode[b] for b in token_bytes)
-
     args.output_dir.mkdir(parents=True, exist_ok=True)
     vocab_path = args.output_dir / "vocab.json"
     merges_path = args.output_dir / "merges.txt"
 
-    gpt2_vocab = {token_bytes_to_str(token_bytes): token_id for token_id, token_bytes in vocab.items()}
+    gpt2_vocab = {bytes_to_gpt2_text(token_bytes): token_id for token_id, token_bytes in vocab.items()}
     with vocab_path.open("w", encoding="utf-8") as f:
         json.dump(gpt2_vocab, f, ensure_ascii=False, indent=2)
 
     with merges_path.open("w", encoding="utf-8") as f:
         for left, right in merges:
-            f.write(f"{token_bytes_to_str(left)} {token_bytes_to_str(right)}\n")
+            f.write(f"{bytes_to_gpt2_text(left)} {bytes_to_gpt2_text(right)}\n")
 
     print(f"Saved vocab: {vocab_path}")
     print(f"Saved merges: {merges_path}")

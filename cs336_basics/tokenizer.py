@@ -1,6 +1,8 @@
 from collections.abc import Iterable, Iterator
+import json
 
 from cs336_basics.bpe import PRE_TOKEN_RE, get_special_token_re
+from cs336_basics.gpt2_utils import gpt2_text_to_bytes
 
 
 class Tokenizer:
@@ -20,10 +22,41 @@ class Tokenizer:
             
     @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None) -> "Tokenizer":
-        raise ValueError 
+        with open(vocab_filepath, encoding="utf-8") as vocab_f:
+            gpt2_vocab: dict[str, int] = json.load(vocab_f)
+
+        vocab = {
+            token_id: gpt2_text_to_bytes(token_text)
+            for token_text, token_id in gpt2_vocab.items()
+        }
+
+        specials = special_tokens or []
+        if specials:
+            vocab_values = set(vocab.values())
+            for special_token in specials:
+                special_token_bytes = special_token.encode("utf-8")
+                if special_token_bytes not in vocab_values:
+                    vocab[len(vocab)] = special_token_bytes
+                    vocab_values.add(special_token_bytes)
+
+        merges: list[tuple[bytes, bytes]] = []
+        with open(merges_filepath, encoding="utf-8") as merges_f:
+            for line in merges_f:
+                cleaned_line = line.rstrip()
+                if not cleaned_line:
+                    continue
+                parts = cleaned_line.split(" ")
+                if len(parts) != 2:
+                    continue
+                left, right = parts
+                left_bytes = gpt2_text_to_bytes(left)
+                right_bytes = gpt2_text_to_bytes(right)
+                merges.append((left_bytes, right_bytes))
+
+        return cls(vocab, merges, specials)
 
     def encode(self, text: str) -> list[int]:
-        return []
+        return list(self.encode_iterable([text]))
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         for pre in self._pre_token_iter(iterable):
