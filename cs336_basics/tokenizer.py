@@ -6,8 +6,15 @@ from cs336_basics.bpe import PRE_TOKEN_RE, get_special_token_re
 class Tokenizer:
     def __init__(self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None) -> None:
         self.vocab = vocab
-        self.merges = set(merges)
-        self.special_tokens = special_tokens
+        self.vocab_inverse: dict[bytes, int] = {}
+        for k,v in vocab.items():
+            self.vocab_inverse[v] = k
+        self.merges = merges
+        self.special_tokens = set([s.encode("utf-8") for s in special_tokens])
+        self.special_token_dict: dict[bytes, int] = {}
+        for idx, b in vocab.items():
+            if b in self.special_tokens:
+                self.special_token_dict[b] = idx
             
     @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None) -> "Tokenizer":
@@ -18,8 +25,11 @@ class Tokenizer:
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         for pre in self._pre_token_iter(iterable):
+            if pre in self.special_tokens:
+                yield self.special_token_dict[pre]
+                continue
+            pre_bytes = tuple(bytes([i]) for i in pre)
 
-        pass
 
     def decode(self, ids: list[int]) -> str:
         pass
@@ -47,3 +57,6 @@ class Tokenizer:
                 for pre in PRE_TOKEN_RE.finditer(chunk[last_index:]):
                     pre_bytes = pre.group(0).encode("utf-8")
                     yield pre_bytes
+
+    def _merge_pre_token_bytes(self, pre_bytes: tuple[bytes]) -> Iterator[int]:
+        pass
