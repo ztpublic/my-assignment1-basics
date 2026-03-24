@@ -36,7 +36,7 @@ def run_linear(
 
     linear = Linear(d_in, d_out)
     with torch.no_grad():
-        linear.p.copy_(weights)
+        linear.weight.copy_(weights)
 
     out = linear(in_features)
 

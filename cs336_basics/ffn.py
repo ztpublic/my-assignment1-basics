@@ -12,9 +12,13 @@ class SwiGLU(nn.Module):
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
-        self.to_dff = Linear(d_model, d_ff, device, dtype)
-        self.to_dff_gate = Linear(d_model, d_ff, device, dtype)
-        self.to_dmodel = Linear(d_ff, d_model, device, dtype)
+        self.w1 = Linear(d_model, d_ff, device, dtype)
+        self.w2 = Linear(d_ff, d_model, device, dtype)
+        self.w3 = Linear(d_model, d_ff, device, dtype)
+
+    def silu(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sigmoid(x) * x
 
     def forward(self, x):
-        pass
+        return self.w2(self.w1(x) * self.silu(self.w3(x)))
+        
