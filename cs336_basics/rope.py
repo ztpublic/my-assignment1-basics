@@ -1,24 +1,36 @@
 import torch
-
+from jaxtyping import Float, Int
 
 class RotaryPositionalEmbedding(torch.nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
-        super().__init__(self)
+        super().__init__()
         self.theta = theta
         self.d_k = d_k
-        self.register_buffer("rotation_cache", torch.empty(int(d_k / 2), max_seq_len, max_seq_len, device=device))
+        k = torch.arange(d_k // 2, device=device).unsqueeze(0)
+        i = torch.arange(max_seq_len, device=device).unsqueeze(1)
 
-    def angle(self, i, k, d) -> float: 
-        return i / (self.theta ** ((2 * k - 2)/ d))
+        phi = i / (self.theta ** (2 * k / d_k))
 
-    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
-        
+        cos_cache: Float[torch.Tensor, "max_seq_len half_d_k"] = torch.cos(phi)
+        sin_cache: Float[torch.Tensor, "max_seq_len half_d_k"] = torch.sin(phi)
+        self.register_buffer("cos_cache", cos_cache)
+        self.register_buffer("sin_cache", sin_cache)
 
-        
-        x = torch.arange(self.d_k / 2)
-        y = torch.stack(
-            [torch.stack([], dim=-1),
-            torch.stack([], dim=-1)], dim=-2
-        )
-        raise NotImplementedError
+
+    def forward(self, x: Float[torch.Tensor, "... seq_len d_k"], token_positions:  Int[torch.Tensor, "... seq_len"]) -> torch.Tensor:
+        x_even: Float[torch.Tensor, "... seq_len half_d_k"] = x[..., 0::2]
+        x_odd: Float[torch.Tensor, "... seq_len half_d_k"] = x[..., 1::2]
+
+        cos_cache: Float[torch.Tensor, "seq_len half_d_k"] = self.get_buffer("cos_cache")
+        sin_cache: Float[torch.Tensor, "seq_len half_d_k"] = self.get_buffer("sin_cache")
+
+        cos: Float[torch.Tensor, "..., seq_len half_d_k"] = cos_cache[token_positions]
+        sin: Float[torch.Tensor, "..., seq_len half_d_k"] = sin_cache[token_positions]
+
+        x_even_rot = x_even * cos - x_odd * sin
+        x_odd_rot = x_even * sin + x_odd * cos
+
+        x_rot = torch.stack((x_even_rot, x_odd_rot), dim=-1).flatten(-2)
+
+        return x_rot
 
