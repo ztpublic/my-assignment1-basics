@@ -20,5 +20,5 @@ class SwiGLU(nn.Module):
         return torch.sigmoid(x) * x
 
     def forward(self, x):
-        return self.w2(self.w1(x) * self.silu(self.w3(x)))
+        return self.w2(self.silu(self.w1(x)) * self.w3(x))
         

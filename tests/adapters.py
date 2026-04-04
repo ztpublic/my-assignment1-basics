@@ -16,6 +16,7 @@ from cs336_basics.linear import Linear
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
+from cs336_basics.transformer import TransformerBlock
 
 
 def run_linear(
@@ -307,7 +308,22 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    model = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
+    with torch.no_grad():
+        model.attention.w_q.weight.copy_(weights["attn.q_proj.weight"])
+        model.attention.w_k.weight.copy_(weights["attn.k_proj.weight"])
+        model.attention.w_v.weight.copy_(weights["attn.v_proj.weight"])
+        model.attention.w_o.weight.copy_(weights["attn.output_proj.weight"])
+        model.attention_norm.g.copy_(weights["ln1.weight"])
+        model.ffn.w1.weight.copy_(weights["ffn.w1.weight"])
+        model.ffn.w2.weight.copy_(weights["ffn.w2.weight"])
+        model.ffn.w3.weight.copy_(weights["ffn.w3.weight"])
+        model.ffn_norm.g.copy_(weights["ln2.weight"])
+
+    batch_size, seq_len, _ = in_features.shape
+    token_positions = torch.arange(seq_len, device=in_features.device).unsqueeze(0).expand(batch_size, -1)
+
+    return model(in_features, token_positions)
 
 
 def run_transformer_lm(
