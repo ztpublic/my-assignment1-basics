@@ -16,7 +16,7 @@ from cs336_basics.linear import Linear
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
-from cs336_basics.transformer import TransformerBlock
+from cs336_basics.transformer import TransformerBlock, TransformerLM
 
 
 def run_linear(
@@ -405,7 +405,34 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    model = TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        d_model=d_model,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        rope_theta=rope_theta,
+    )
+
+    with torch.no_grad():
+        model.embedding.p.copy_(weights["token_embeddings.weight"])
+        for layer_idx, block in enumerate(model.transformer_blocks):
+            prefix = f"layers.{layer_idx}."
+            block.attention.w_q.weight.copy_(weights[prefix + "attn.q_proj.weight"])
+            block.attention.w_k.weight.copy_(weights[prefix + "attn.k_proj.weight"])
+            block.attention.w_v.weight.copy_(weights[prefix + "attn.v_proj.weight"])
+            block.attention.w_o.weight.copy_(weights[prefix + "attn.output_proj.weight"])
+            block.attention_norm.g.copy_(weights[prefix + "ln1.weight"])
+            block.ffn.w1.weight.copy_(weights[prefix + "ffn.w1.weight"])
+            block.ffn.w2.weight.copy_(weights[prefix + "ffn.w2.weight"])
+            block.ffn.w3.weight.copy_(weights[prefix + "ffn.w3.weight"])
+            block.ffn_norm.g.copy_(weights[prefix + "ln2.weight"])
+
+        model.norm.g.copy_(weights["ln_final.weight"])
+        model.linear.weight.copy_(weights["lm_head.weight"])
+
+    return model(in_indices)
 
 
 def run_rmsnorm(
