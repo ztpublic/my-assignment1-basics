@@ -24,12 +24,16 @@ def scaled_dot_product_attention(
 class MultiHeadAttention(torch.nn.Module):
     def __init__(self, d_model: int, num_heads: int, device: torch.device | None = None):
         super().__init__()
+        if d_model % num_heads != 0:
+            raise ValueError("d_model must be divisible by num_heads")
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_k = self.d_model // self.num_heads
-        self.w_q_list = torch.nn.ModuleList([Linear(self.d_model, self.d_k, device) for i in range(self.num_heads)])
-        self.w_k_list = torch.nn.ModuleList([Linear(self.d_model, self.d_k, device) for i in range(self.num_heads)])
-        self.w_v_list = torch.nn.ModuleList([Linear(self.d_model, self.d_k, device) for i in range(self.num_heads)])
+
+        self.w_q = Linear(self.d_model, self.d_model, device)
+        self.w_k = Linear(self.d_model, self.d_model, device)
+        self.w_v = Linear(self.d_model, self.d_model, device)
+
         self.w_o = Linear(self.d_model, self.d_model, device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -41,17 +45,16 @@ class MultiHeadAttention(torch.nn.Module):
 
         mask = torch.where(j > i, False, True)
 
-        v_out_list = []
+        q: Float[Tensor, " ... seq d_model"] = self.w_q(x)
+        k: Float[Tensor, " ... seq d_model"] = self.w_k(x)
+        v: Float[Tensor, " ... seq d_model"] = self.w_v(x)
 
-        for idx in range(self.num_heads):
-            w_q = self.w_q_list[idx]
-            w_k = self.w_k_list[idx]
-            w_v = self.w_v_list[idx]
+        q_reshape = q.reshape(*q.shape[:-1], self.num_heads, -1).transpose(-2, -3)
+        k_reshape = k.reshape(*k.shape[:-1], self.num_heads, -1).transpose(-2, -3)
+        v_reshape = v.reshape(*v.shape[:-1], self.num_heads, -1).transpose(-2, -3)
 
-            v_out = scaled_dot_product_attention(w_q(x), w_k(x), w_v(x), mask)
-            v_out_list.append(v_out)
+        v_out = scaled_dot_product_attention(q_reshape, k_reshape, v_reshape, mask)
 
-        cat = torch.cat(v_out_list, dim=-1)
-
-        out = self.w_o(cat)
+        v_out_reshape = v_out.transpose(-2, -3).reshape(*v.shape)
+        out = self.w_o(v_out_reshape)
         return out
