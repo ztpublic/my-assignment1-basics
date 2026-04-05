@@ -14,6 +14,7 @@ from cs336_basics.bpe import my_run_train_bpe
 from cs336_basics.embedding import Embedding
 from cs336_basics.linear import Linear
 from cs336_basics.loss import cross_entropy
+from cs336_basics.optimizer import AdamW
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
@@ -548,7 +549,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
