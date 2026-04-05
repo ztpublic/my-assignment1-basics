@@ -13,6 +13,7 @@ from cs336_basics.attention import MultiHeadAttention, RopeMultiHeadAttention, s
 from cs336_basics.bpe import my_run_train_bpe
 from cs336_basics.embedding import Embedding
 from cs336_basics.linear import Linear
+from cs336_basics.loss import cross_entropy
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
@@ -526,7 +527,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(
