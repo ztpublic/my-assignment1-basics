@@ -14,7 +14,7 @@ from cs336_basics.bpe import my_run_train_bpe
 from cs336_basics.embedding import Embedding
 from cs336_basics.linear import Linear
 from cs336_basics.loss import cross_entropy
-from cs336_basics.optimizer import AdamW
+from cs336_basics.optimizer import AdamW, gradient_clipping
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.scheduler import lr_cosine_schedule
 from cs336_basics.softmax import softmax
@@ -543,7 +543,7 @@ def run_gradient_clipping(
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:

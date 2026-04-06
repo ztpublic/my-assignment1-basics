@@ -4,6 +4,29 @@ from typing import Optional
 import torch
 import math
 
+def gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter], max_l2_norm: float
+) -> None:
+    norm = torch.zeros(1)
+    for p in parameters:
+        g = p.grad
+        if g is None:
+            continue
+        norm += g.pow(2).sum()
+
+    norm = torch.sqrt(norm)
+
+    if norm <= max_l2_norm:
+        return
+
+    scale = max_l2_norm / norm
+
+    for p in parameters:
+        g = p.grad
+        if g is None:
+            continue
+        g.mul_(scale)
+
 
 class AdamW(torch.optim.Optimizer):
     def __init__(
