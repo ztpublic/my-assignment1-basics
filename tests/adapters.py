@@ -11,6 +11,7 @@ from torch import Tensor
 
 from cs336_basics.attention import MultiHeadAttention, RopeMultiHeadAttention, scaled_dot_product_attention
 from cs336_basics.bpe import my_run_train_bpe
+from cs336_basics.data_loader import get_batch
 from cs336_basics.embedding import Embedding
 from cs336_basics.linear import Linear
 from cs336_basics.loss import cross_entropy
@@ -495,7 +496,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return get_batch(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
