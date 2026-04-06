@@ -16,6 +16,7 @@ from cs336_basics.linear import Linear
 from cs336_basics.loss import cross_entropy
 from cs336_basics.optimizer import AdamW
 from cs336_basics.rope import RotaryPositionalEmbedding
+from cs336_basics.scheduler import lr_cosine_schedule
 from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.transformer import TransformerBlock, TransformerLM
@@ -577,7 +578,7 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return lr_cosine_schedule(it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters)
 
 
 def run_save_checkpoint(
