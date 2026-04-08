@@ -61,20 +61,20 @@ def sample_top_p(
 class Decoder:
     def __init__(
         self,
-        config: TransformerLMConfig,
+        llm: TransformerLM,
         tokenizer: Tokenizer,
         softmax_temp: float,
         top_p: float,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
-        self.llm_config = config
-        self.llm = TransformerLM.from_config(config, device, dtype)
+        self.llm = llm
         self.tokenizer = tokenizer
         self.device = device
         self.softmax_temp = softmax_temp
         self.top_p = top_p
         self.eot_token = tokenizer.encode("<|endoftext|>")[0]
+        self.context_length = llm.context_length
 
     def completion(self, prompts: str, max_token_count: int = 100) -> str:
         prompt_tokens = self.tokenizer.encode(prompts)
@@ -82,7 +82,7 @@ class Decoder:
         x.unsqueeze_(0)
         output: List[str] = []
         while True:
-            if x.size(-1) > self.llm_config.context_length:
+            if x.size(-1) > self.context_length:
                 break
             o: Float[torch.Tensor, "batch seq vocab_size"] = self.llm(x)
             last = o[0, -1]
