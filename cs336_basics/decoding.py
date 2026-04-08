@@ -85,7 +85,7 @@ class Decoder:
             if x.size(-1) > self.llm_config.context_length:
                 break
             o: Float[torch.Tensor, "batch seq vocab_size"] = self.llm(x)
-            last = o.squeeze(0)[o.size(1) - 1]
+            last = o[0, -1]
             soft = temperature_softmax(last, self.softmax_temp, -1)
             sample = sample_top_p(soft, self.top_p)
             token: Int = sample.item()
