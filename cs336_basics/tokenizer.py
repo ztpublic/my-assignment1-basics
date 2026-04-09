@@ -1,7 +1,8 @@
 from collections.abc import Iterable, Iterator
+from functools import lru_cache
 import json
 
-from cs336_basics.bpe import PRE_TOKEN_RE, get_special_token_re
+from cs336_basics.bpe import PRE_TOKEN_RE, SINGLE_BYTE_TOKENS, get_special_token_re
 from cs336_basics.gpt2_utils import gpt2_text_to_bytes
 
 
@@ -12,9 +13,16 @@ class Tokenizer:
         for k,v in vocab.items():
             self.vocab_inverse[v] = k
         self.merges = merges
+        self.merge_ranks = {pair: rank for rank, pair in enumerate(merges)}
         if special_tokens == None:
             special_tokens = []
         self.special_tokens = set([s.encode("utf-8") for s in special_tokens])
+        self.special_tokens_text = tuple(special_tokens)
+        self.special_token_re = (
+            get_special_token_re(self.special_tokens_text)
+            if self.special_tokens_text
+            else None
+        )
         self.special_token_dict: dict[bytes, int] = {}
         for idx, b in vocab.items():
             if b in self.special_tokens:
@@ -63,8 +71,7 @@ class Tokenizer:
             if pre in self.special_tokens:
                 yield self.special_token_dict[pre]
                 continue
-            pre_bytes = tuple(bytes([i]) for i in pre)
-            yield from self._encode_pre_token(pre_bytes)
+            yield from self._encode_piece(pre)
 
     def decode(self, ids: list[int]) -> str:
         byte_list = [self.vocab[token_id] for token_id in ids]
@@ -78,10 +85,9 @@ class Tokenizer:
                    pre_bytes = pre.group(0).encode("utf-8")
                    yield pre_bytes
             return
-        special_token_re = get_special_token_re(tuple(s.decode("utf-8") for s in self.special_tokens))
         for chunk in iterable:
             last_index = 0
-            for match in special_token_re.finditer(chunk):
+            for match in self.special_token_re.finditer(chunk):
                 start_index, end_index = match.span()
                 if start_index > last_index:
                     for pre in PRE_TOKEN_RE.finditer(chunk[last_index:start_index]):
@@ -95,31 +101,36 @@ class Tokenizer:
                     pre_bytes = pre.group(0).encode("utf-8")
                     yield pre_bytes
 
-    def _encode_pre_token(self, pre_bytes: tuple[bytes, ...]) -> Iterator[int]:
-        matched = True
-        while True:
-            if not matched:
+    @lru_cache(maxsize=65536)
+    def _encode_piece(self, pre: bytes) -> tuple[int, ...]:
+        pieces = [SINGLE_BYTE_TOKENS[b] for b in pre]
+        while len(pieces) > 1:
+            best_rank: int | None = None
+            best_pair: tuple[bytes, bytes] | None = None
+
+            for left, right in zip(pieces, pieces[1:]):
+                pair = (left, right)
+                rank = self.merge_ranks.get(pair)
+                if rank is None:
+                    continue
+                if best_rank is None or rank < best_rank:
+                    best_rank = rank
+                    best_pair = pair
+
+            if best_pair is None:
                 break
-            matched = False
-            pair_map = self._get_adjacent_pair_map(pre_bytes)
-            for merge in self.merges:
-                if merge in pair_map:
-                    matched = True
-                    merge_start_idx = pair_map[merge]
-                    a, b = merge
-                    merged_bytes = a + b
-                    new_pre_bytes = (*pre_bytes[:merge_start_idx], merged_bytes, *pre_bytes[merge_start_idx + 2:])
-                    pre_bytes = new_pre_bytes
-                    break
-        for b in pre_bytes:
-            yield self.vocab_inverse[b]            
 
+            left, right = best_pair
+            merged = left + right
+            new_pieces: list[bytes] = []
+            idx = 0
+            while idx < len(pieces):
+                if idx + 1 < len(pieces) and pieces[idx] == left and pieces[idx + 1] == right:
+                    new_pieces.append(merged)
+                    idx += 2
+                else:
+                    new_pieces.append(pieces[idx])
+                    idx += 1
+            pieces = new_pieces
 
-    def _get_adjacent_pair_map(self, pre_bytes: tuple[bytes, ...]) -> dict[tuple[bytes, bytes], int]:
-        out = {}
-        for idx, pre in enumerate(pre_bytes):
-            if idx < len(pre_bytes) - 1:
-                bytes_tuple = (pre, pre_bytes[idx + 1])
-                if bytes_tuple not in out:
-                    out[bytes_tuple] = idx
-        return out
+        return tuple(self.vocab_inverse[piece] for piece in pieces)
