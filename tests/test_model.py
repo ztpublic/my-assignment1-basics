@@ -114,6 +114,50 @@ def test_multihead_self_attention_with_rope(
     numpy_snapshot.assert_match(actual_output, atol=1e-6)
 
 
+def test_multihead_self_attention_with_rope_batched_positions(
+    in_embeddings, d_model, n_heads, ts_state_dict, n_keys, theta, pos_ids
+):
+    d, _ = ts_state_dict
+    q_proj_weight, k_proj_weight, v_proj_weight, o_proj_weight = [
+        d[f"layers.0.attn.{k}_proj.weight"] for k in ["q", "k", "v", "output"]
+    ]
+    batched_pos_ids = pos_ids.unsqueeze(0).expand(in_embeddings.shape[0], -1)
+
+    actual_output = run_multihead_self_attention_with_rope(
+        d_model=d_model,
+        num_heads=n_heads,
+        max_seq_len=n_keys,
+        theta=theta,
+        q_proj_weight=q_proj_weight,
+        k_proj_weight=k_proj_weight,
+        v_proj_weight=v_proj_weight,
+        o_proj_weight=o_proj_weight,
+        in_features=in_embeddings,
+        token_positions=batched_pos_ids,
+    )
+
+    expected_output = torch.stack(
+        [
+            run_multihead_self_attention_with_rope(
+                d_model=d_model,
+                num_heads=n_heads,
+                max_seq_len=n_keys,
+                theta=theta,
+                q_proj_weight=q_proj_weight,
+                k_proj_weight=k_proj_weight,
+                v_proj_weight=v_proj_weight,
+                o_proj_weight=o_proj_weight,
+                in_features=in_embeddings[i : i + 1],
+                token_positions=batched_pos_ids[i : i + 1],
+            ).squeeze(0)
+            for i in range(in_embeddings.shape[0])
+        ],
+        dim=0,
+    )
+
+    torch.testing.assert_close(actual_output, expected_output, atol=1e-6, rtol=1e-6)
+
+
 def test_transformer_lm(
     numpy_snapshot, vocab_size, n_keys, d_model, n_layers, n_heads, d_ff, theta, ts_state_dict, in_indices
 ):

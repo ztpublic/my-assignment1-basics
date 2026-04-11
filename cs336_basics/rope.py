@@ -24,8 +24,10 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         cos_cache: Float[torch.Tensor, "seq_len half_d_k"] = self.get_buffer("cos_cache")
         sin_cache: Float[torch.Tensor, "seq_len half_d_k"] = self.get_buffer("sin_cache")
 
-        cos: Float[torch.Tensor, "..., seq_len half_d_k"] = cos_cache[token_positions]
-        sin: Float[torch.Tensor, "..., seq_len half_d_k"] = sin_cache[token_positions]
+        # Preserve broadcasting across any extra dimensions before seq_len,
+        # including the attention head axis used by batched multi-head attention.
+        cos: Float[torch.Tensor, "..., seq_len half_d_k"] = cos_cache[token_positions].unsqueeze(-3)
+        sin: Float[torch.Tensor, "..., seq_len half_d_k"] = sin_cache[token_positions].unsqueeze(-3)
 
         x_even_rot = x_even * cos - x_odd * sin
         x_odd_rot = x_even * sin + x_odd * cos
@@ -33,4 +35,3 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         x_rot = torch.stack((x_even_rot, x_odd_rot), dim=-1).flatten(-2)
 
         return x_rot
-

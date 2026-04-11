@@ -1,10 +1,13 @@
+from dataclasses import asdict
+
+import numpy as np
+import torch
+import wandb
+
 from cs336_basics.data_loader import get_batch
 from cs336_basics.loss import cross_entropy
 from cs336_basics.optimizer import AdamW
-from cs336_basics.softmax import softmax
 from cs336_basics.transformer import TransformerLM, TransformerLMConfig
-import torch
-import numpy as np
 
 
 def main():
@@ -17,26 +20,58 @@ def main():
         d_ff=1344,
     )
 
+    batch_size = 32
+    num_steps = 100
+    learning_rate = 1e-3
+    weight_decay = 0.01
+    betas = (0.9, 0.999)
+    eps = 1e-8
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
+
     arr = np.load("data/tiny-stories-10000-tokenized.npy")
 
-    model = TransformerLM.from_config(config, device="mps", dtype=torch.float32)
-    optimizer = AdamW(
-        model.parameters(), 
-        lr=1e-3,
-        weight_decay=0.01,
-        betas=(0.9, 0.999),
-        eps=1e-8,
+    run = wandb.init(
+        project="cs336-basics",
+        config={
+            **asdict(config),
+            "batch_size": batch_size,
+            "num_steps": num_steps,
+            "learning_rate": learning_rate,
+            "weight_decay": weight_decay,
+            "betas": betas,
+            "eps": eps,
+            "device": device,
+        },
     )
-    for i in range(100):
-        optimizer.zero_grad()
-        inputs, targets = get_batch(arr, 32, 256, "mps")
-        out = model(inputs)
-        loss = cross_entropy(out, targets)
-        loss.backward()
-        optimizer.step()
 
-    model_state = model.state_dict()
-    torch.save(model_state, "./data/model")
+    model = TransformerLM.from_config(config, device=device, dtype=torch.float32)
+    optimizer = AdamW(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=weight_decay,
+        betas=betas,
+        eps=eps,
+    )
+
+    try:
+        for step in range(num_steps):
+            optimizer.zero_grad()
+            inputs, targets = get_batch(arr, batch_size, config.context_length, device)
+            logits = model(inputs)
+            loss = cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                targets.reshape(-1),
+            )
+            loss.backward()
+            optimizer.step()
+
+            wandb.log({"train/loss": loss.item()}, step=step)
+
+        model_path = "./data/model.pt"
+        torch.save(model.state_dict(), model_path)
+        wandb.save(model_path)
+    finally:
+        wandb.finish()
 
 
 if __name__ == "__main__":
