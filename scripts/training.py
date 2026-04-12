@@ -1,3 +1,5 @@
+import argparse
+import sys
 from dataclasses import asdict
 
 import numpy as np
@@ -10,7 +12,46 @@ from cs336_basics.optimizer import AdamW
 from cs336_basics.transformer import TransformerLM, TransformerLMConfig
 
 
+def resolve_device(requested_device: str) -> str:
+    """Resolve a requested training device into a concrete torch device string."""
+    if requested_device == "auto":
+        if torch.cuda.is_available():
+            return "cuda"
+        if torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
+
+    if requested_device.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available in this PyTorch install/environment")
+    if requested_device == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError("MPS was requested but is not available in this PyTorch install/environment")
+
+    return str(torch.device(requested_device))
+
+
+def accelerator_diagnostics() -> dict[str, object]:
+    """Capture the runtime accelerator state that affects device selection."""
+    return {
+        "torch_version": torch.__version__,
+        "torch_cuda_compiled": torch.version.cuda,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_device_count": torch.cuda.device_count(),
+        "mps_available": torch.backends.mps.is_available(),
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the CS336 basics language model.")
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="Training device to use. Defaults to auto (CUDA, then MPS, then CPU).",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     config = TransformerLMConfig(
         vocab_size=10000,
         context_length=256,
@@ -21,12 +62,25 @@ def main():
     )
 
     batch_size = 32
-    num_steps = 100
+    num_steps = 5000
     learning_rate = 1e-3
     weight_decay = 0.01
     betas = (0.9, 0.999)
     eps = 1e-8
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    device = resolve_device(args.device)
+    diagnostics = accelerator_diagnostics()
+
+    print(
+        "accelerator diagnostics:",
+        {**diagnostics, "requested_device": args.device, "selected_device": device},
+        file=sys.stderr,
+    )
+    if args.device == "auto" and device == "cpu" and not diagnostics["cuda_available"]:
+        print(
+            "warning: training fell back to CPU because CUDA is unavailable in this Python environment. "
+            "If you expect GPU training, check that this virtualenv has a CUDA-enabled PyTorch build.",
+            file=sys.stderr,
+        )
 
     arr = np.load("data/tiny-stories-10000-tokenized.npy")
 
@@ -41,6 +95,7 @@ def main():
             "betas": betas,
             "eps": eps,
             "device": device,
+            **diagnostics,
         },
     )
 
